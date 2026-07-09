@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SEMS | SEWON Emission & Energy Management System</title>
+  <style>
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#172335;color:white;font-family:Arial,'Noto Sans KR',sans-serif}
+    .boot{max-width:520px;padding:30px;border-radius:20px;background:rgba(255,255,255,.08);box-shadow:0 20px 60px rgba(0,0,0,.24)}
+    h1{margin:0 0 8px}p{margin:0;color:#dbeafe;font-weight:800}.err{margin-top:14px;color:#fecaca;white-space:pre-wrap;font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="boot"><h1>SEMS</h1><p>시스템을 불러오는 중입니다.</p><div id="bootError" class="err"></div></div>
+  <script>
+  (async function(){
+    const SOURCE='https://raw.githubusercontent.com/gyeongseop97/SEMS/7b1850b6a35c4db760082c40cf0d53e31ddfcb91/index.html';
+    const err=document.getElementById('bootError');
+    try{
+      let html=await (await fetch(SOURCE,{cache:'no-store'})).text();
+      html=html.replace('회사별 계정으로 접속하면 본인 회사의 배출량 데이터만 조회·수정할 수 있습니다. 기획팀 어드민 계정은 전체 데이터를 관리합니다.','회사별 계정으로 접속하면 본인 회사의 배출량 데이터만 수정할 수 있습니다.');
+      html=html.replace('sb = window.supabase.createClient(cfg.url, cfg.anonKey);','sb = window.supabase.createClient(cfg.url, cfg.anonKey, { auth: { storage: window.sessionStorage, persistSession: true, autoRefreshToken: true } });');
+      html=html.replace('<button type="button" class="secondary mini-action" data-action="factors">적용 배출계수 세트 편집</button>','');
+      html=html.replace('<div id="semsServerBadge" class="sems-server-badge">Supabase 연결됨</div>','');
+      const outputBasisCss = '<style id="sems-output-basis-width-fix">.dashboard-actions button[data-action="factors"],#semsServerBadge{display:none!important}</style>';
+      const patch = [
+        '<script src="assets/sems_monthly_complete.js?v=20260704"></' + 'script>',
+        outputBasisCss,
+        '<script src="assets/sems_delete_selection_clean.js?v=20260704"></' + 'script>',
+        '<script src="assets/sems_i18n_patch.js?v=20260704"></' + 'script>'
+      ].join('');
+      html=html.replace('</body>', patch + '</body>');
+      document.open();
+      document.write(html);
+      document.close();
+    }catch(e){
+      if(err)err.textContent=e && e.message ? e.message : String(e);
+    }
+  })();
+  </script>
+</body>
+</html>
