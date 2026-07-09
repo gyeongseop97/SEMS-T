@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SEMS-T | 온실가스 입력</title>
+  <style>
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#172335;color:white;font-family:Arial,'Noto Sans KR',sans-serif}
+    .boot{max-width:560px;padding:30px;border-radius:20px;background:rgba(255,255,255,.08);box-shadow:0 20px 60px rgba(0,0,0,.24)}
+    h1{margin:0 0 8px}p{margin:0;color:#dbeafe;font-weight:800;line-height:1.45}.err{margin-top:14px;color:#fecaca;white-space:pre-wrap;font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="boot"><h1>SEMS 온실가스 입력</h1><p>기존 SEMS 산정 화면과 배출계수 구조를 불러오는 중입니다.</p><div id="bootError" class="err"></div></div>
+  <script>
+  (async function(){
+    const SOURCE='https://raw.githubusercontent.com/gyeongseop97/SEMS/7b1850b6a35c4db760082c40cf0d53e31ddfcb91/index.html';
+    const err=document.getElementById('bootError');
+    try{
+      let html=await (await fetch(SOURCE,{cache:'no-store'})).text();
+      html=html.replace('회사별 계정으로 접속하면 본인 회사의 배출량 데이터만 조회·수정할 수 있습니다. 기획팀 어드민 계정은 전체 데이터를 관리합니다.','회사별 계정으로 접속하면 본인 회사의 배출량 데이터만 수정할 수 있습니다. 온실가스 산정은 기존 SEMS 입력방식과 배출계수를 사용합니다.');
+      html=html.replace('sb = window.supabase.createClient(cfg.url, cfg.anonKey);','sb = window.supabase.createClient(cfg.url, cfg.anonKey, { auth: { storage: window.sessionStorage, persistSession: true, autoRefreshToken: true } });');
+      const patch = [
+        '<style id="sems-t-ghg-legacy-note">.sems-server-badge{display:none!important}.dashboard::before{content:"온실가스 입력은 기존 SEMS 산정방식과 배출계수 세트를 그대로 사용합니다.";display:block;margin:0 0 12px;padding:12px 14px;border-radius:14px;background:#eef6ff;color:#173f69;font-weight:800;border:1px solid #cfe2f7}</style>',
+        '<script src="assets/sems_monthly_complete.js?v=20260704"></' + 'script>',
+        '<script src="assets/sems_delete_selection_clean.js?v=20260704"></' + 'script>'
+      ].join('');
+      html=html.replace('</body>', patch + '</body>');
+      document.open();
+      document.write(html);
+      document.close();
+    }catch(e){
+      if(err)err.textContent=e && e.message ? e.message : String(e);
+    }
+  })();
+  </script>
+</body>
+</html>
