@@ -1,181 +1,152 @@
 const $ = (id) => document.getElementById(id);
-const STORE = 'semsT.reportingSheet.records.v1';
+const STORE = 'semsT.commercialUx.records.v1';
+const GHG_STORE = 'semsT.commercialUx.ghg.v1';
 const now = new Date();
 const companies = ['세원정공','세원물산','세원테크','세원이엔아이'];
-const sites = ['본사','대구공장','영천공장','해외법인'];
-let records = JSON.parse(localStorage.getItem(STORE) || '[]');
+const sitesByCompany = {
+  '세원정공':['세원정공'],
+  '세원물산':['도남 1공장','채신 2공장'],
+  '세원테크':['세원테크'],
+  '세원이엔아이':['세원이엔아이']
+};
 let page = 'dashboard';
-let activeSheet = { environment:'water', people:'headcount', safety:'incident', supply:'supplier' };
+let activeDomain = 'all';
+let selectedMetric = null;
+let esgRecords = JSON.parse(localStorage.getItem(STORE) || '[]');
+let ghgRecords = JSON.parse(localStorage.getItem(GHG_STORE) || '[]');
+let emissionFactors = [];
 
 const pages = [
-  ['dashboard','대시보드','현황'],
-  ['ghg','온실가스','기존 SEMS'],
-  ['environment','환경자료','용수·폐기물·대기'],
-  ['people','인사자료','임직원·교육'],
-  ['safety','안전보건','재해·개선'],
-  ['supply','공급망·윤리','실사·제보'],
-  ['map','보고서 맵','연결표'],
-  ['settings','설정','DB 구조']
+  ['dashboard','Dashboard','현황'],
+  ['collect','Data Collection','요청'],
+  ['ghg','Carbon Accounting','SEMS식'],
+  ['library','Metric Library','지표'],
+  ['evidence','Evidence','증빙'],
+  ['reports','Reports','보고서'],
+  ['settings','Settings','설정']
 ];
 
-const templates = {
-  environment:{
-    title:'환경자료 입력대장', desc:'용수·폐수, 폐기물, 대기오염물질은 각각 입력 기준이 다르므로 탭을 나누되, 입력은 엑셀 대장처럼 한 번에 저장합니다.',
-    sheets:[
-      {id:'water', name:'용수·폐수', guide:'취수원/배출구분별 월간 수량과 증빙을 입력합니다.', rows:['상수 사용량','지하수 사용량','공업용수 사용량','폐수 배출량','재이용수 사용량'], cols:[['item','항목','fixed'],['value','수량','number'],['unit','단위','select','ton|m³'],['evidence','증빙','text'],['note','비고','text']]},
-      {id:'waste', name:'폐기물', guide:'폐기물 종류별로 일반/지정, 처리방법, 위탁처리업체를 함께 입력합니다.', rows:['일반폐기물','지정폐기물','폐기계유/폐유','폐수처리오니','재활용 폐기물','기타'], cols:[['item','폐기물 종류','text'],['hazard','구분','select','일반|지정'],['method','처리방법','select','재활용|소각|매립|중화|기타'],['value','배출량','number'],['unit','단위','select','ton|kg'],['vendor','처리업체','text'],['evidence','증빙','text']]},
-      {id:'air', name:'대기오염물질', guide:'배출구/시설별 측정값과 측정성적서를 관리합니다.', rows:['NOx','SOx','먼지','VOC','HCl','기타'], cols:[['facility','배출구/시설','text'],['item','오염물질','fixed'],['value','측정값/배출량','number'],['unit','단위','select','kg|ton|ppm|mg/Sm³'],['date','측정일','date'],['evidence','측정성적서','text']]}
-    ]
-  },
-  people:{
-    title:'인사자료 입력대장', desc:'개인정보가 아니라 보고서 작성에 필요한 집계값만 관리합니다. 기준일, 구분, 인원, 증빙을 한 화면에서 입력합니다.',
-    sheets:[
-      {id:'headcount', name:'임직원 현황', guide:'월말 또는 연말 기준 스냅샷입니다.', rows:['총 임직원 수','남성 임직원 수','여성 임직원 수','관리직 인원','생산직 인원','정규직 인원','비정규직 인원','외국인 근로자','장애인 근로자'], cols:[['item','항목','fixed'],['baseDate','기준일','date'],['value','인원','number'],['unit','단위','fixed','명'],['evidence','증빙','text'],['note','비고','text']]},
-      {id:'movement', name:'채용·퇴사', guide:'성별·연령대별 채용/퇴사 집계값을 입력합니다.', rows:['신규채용 전체','신규채용 남성','신규채용 여성','퇴사 전체','퇴사 남성','퇴사 여성','30세 미만','30~50세','50세 초과'], cols:[['item','항목','fixed'],['type','구분','select','채용|퇴사|연령대'],['value','인원','number'],['unit','단위','fixed','명'],['evidence','증빙','text'],['note','비고','text']]},
-      {id:'training', name:'교육훈련', guide:'교육명별 인원과 총 교육시간을 입력합니다.', rows:['법정의무교육','안전보건교육','직무교육','윤리·준법교육','인권/괴롭힘 예방교육','기타'], cols:[['item','교육구분','fixed'],['trainingName','교육명','text'],['target','대상','select','전체|관리직|생산직|신규입사자|관리자'],['people','교육인원','number'],['hours','총 교육시간','number'],['evidence','결과보고서/서명부','text']]}
-    ]
-  },
-  safety:{
-    title:'안전보건 입력대장', desc:'사고 건수만 입력하지 않고 사고유형, 손실일수, 조치상태, 개선조치까지 같이 관리합니다.',
-    sheets:[
-      {id:'incident', name:'산업재해·사고', guide:'재해 유형별 월간 건수와 손실일수를 입력합니다.', rows:['끼임','넘어짐','떨어짐','부딪힘','화상','베임/찔림','기타'], cols:[['item','사고유형','fixed'],['date','대표 발생일','date'],['count','건수','number'],['lostDays','근로손실일수','number'],['status','조치상태','select','해당없음|조치중|조치완료|재발방지대책 수립'],['evidence','증빙','text']]},
-      {id:'risk', name:'위험성평가·개선', guide:'공정별 위험요인과 개선조치 완료여부를 입력합니다.', rows:['프레스','용접','조립','물류','보전','사무','기타'], cols:[['item','공정/부서','fixed'],['risk','위험요인','text'],['level','위험도','select','낮음|보통|높음'],['action','개선조치','text'],['status','상태','select','계획|진행중|완료'],['evidence','증빙','text']]}
-    ]
-  },
-  supply:{
-    title:'공급망·윤리 입력대장', desc:'협력사 평가, 실사, 개선요청, 윤리교육, 고충·제보 건수를 대장 형태로 관리합니다.',
-    sheets:[
-      {id:'supplier', name:'협력사 ESG 평가', guide:'평가대상, 평가완료, 고위험, 개선요청 수를 관리합니다.', rows:['1차 협력사','주요 원자재 협력사','외주가공 협력사','물류 협력사','기타'], cols:[['item','구분','fixed'],['target','평가대상 수','number'],['completed','평가완료 수','number'],['highRisk','고위험 수','number'],['improvement','개선요청 수','number'],['evidence','평가표/결과','text']]},
-      {id:'due', name:'공급망 실사', guide:'실사 방식과 결과, 개선계획을 협력사 단위로 입력합니다.', rows:['협력사 1','협력사 2','협력사 3','협력사 4','협력사 5','기타'], cols:[['supplier','협력사명','text'],['method','실사방법','select','현장실사|서면실사|문서검토'],['result','결과','select','양호|개선필요|고위험'],['action','개선계획','text'],['status','상태','select','계획|진행중|완료'],['evidence','실사보고서','text']]},
-      {id:'ethics', name:'윤리·제보', guide:'윤리교육, 반부패교육, 고충·제보, 징계 등 건수 또는 시간을 관리합니다.', rows:['윤리교육','반부패교육','고충 접수','제보 접수','징계','기타'], cols:[['item','항목','fixed'],['value','건수/시간','number'],['unit','단위','select','건|시간|명'],['status','처리상태','select','해당없음|접수|조사중|종결'],['evidence','증빙','text'],['note','비고','text']]}
-    ]
-  }
-};
+const factorFallback = [
+  {source:'고정연소',scope:'Scope 1',sub_source:'LNG',base_unit:'Nm3',factor:2.16,factor_unit:'kgCO2e/Nm3',factor_source:'SEMS 기본 배출계수',factor_year:'2024',units:[{label:'Nm3',multiplier:1},{label:'천Nm3',multiplier:1000}]},
+  {source:'고정연소',scope:'Scope 1',sub_source:'LPG',base_unit:'kg',factor:3.0,factor_unit:'kgCO2e/kg',factor_source:'SEMS 기본 배출계수',factor_year:'2024',units:[{label:'kg',multiplier:1},{label:'ton',multiplier:1000}]},
+  {source:'이동연소',scope:'Scope 1',sub_source:'휘발유',base_unit:'L',factor:2.31,factor_unit:'kgCO2e/L',factor_source:'SEMS 기본 배출계수',factor_year:'2024',units:[{label:'L',multiplier:1},{label:'kL',multiplier:1000}]},
+  {source:'이동연소',scope:'Scope 1',sub_source:'경유',base_unit:'L',factor:2.68,factor_unit:'kgCO2e/L',factor_source:'SEMS 기본 배출계수',factor_year:'2024',units:[{label:'L',multiplier:1},{label:'kL',multiplier:1000}]},
+  {source:'냉매',scope:'Scope 1',sub_source:'R-134a',base_unit:'kg',factor:1530,factor_unit:'kgCO2e/kg',factor_source:'SEMS 기본 배출계수',factor_year:'2024',units:[{label:'kg',multiplier:1},{label:'ton',multiplier:1000}]},
+  {source:'냉매',scope:'Scope 1',sub_source:'R-410A',base_unit:'kg',factor:2256,factor_unit:'kgCO2e/kg',factor_source:'SEMS 기본 배출계수',factor_year:'2024',units:[{label:'kg',multiplier:1},{label:'ton',multiplier:1000}]},
+  {source:'전기',scope:'Scope 2',sub_source:'전기',base_unit:'kWh',factor:0.424,factor_unit:'kgCO2e/kWh',factor_source:'SEMS 기본 배출계수',factor_year:'2024',units:[{label:'kWh',multiplier:1},{label:'MWh',multiplier:1000}]},
+  {source:'운영 시 발생 폐기물',scope:'Scope 3',sub_source:'일반(소각, 매립)',base_unit:'ton',factor:467.0,factor_unit:'kgCO2e/ton',factor_source:'SEMS 기본 배출계수',factor_year:'2024',units:[{label:'ton',multiplier:1},{label:'kg',multiplier:0.001}]},
+  {source:'출장',scope:'Scope 3',sub_source:'항공/철도/차량',base_unit:'km',factor:0.15,factor_unit:'kgCO2e/km',factor_source:'SEMS 기본 배출계수',factor_year:'2024',units:[{label:'km',multiplier:1}]},
+  {source:'직원 통근',scope:'Scope 3',sub_source:'자가용',base_unit:'person-km',factor:0.18,factor_unit:'kgCO2e/person-km',factor_source:'SEMS 기본 배출계수',factor_year:'2024',units:[{label:'person-km',multiplier:1}]}
+];
 
-function save(){ localStorage.setItem(STORE, JSON.stringify(records)); }
-function filter(){ return {year:+$('year').value, month:+$('month').value, company:$('company').value, site:$('site').value}; }
-function matchBase(r){ const f=filter(); return r.year===f.year && r.month===f.month && r.company===f.company && r.site===f.site; }
-function recKey(area,sheet,rowId){ const f=filter(); return `${f.year}|${f.month}|${f.company}|${f.site}|${area}|${sheet}|${rowId}`; }
-function getRecord(area,sheet,rowId){ const key=recKey(area,sheet,rowId); return records.find(r=>r.key===key); }
-function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
-function safeId(v){ return String(v).replace(/[^a-zA-Z0-9_]/g,'_'); }
+const metrics = [
+  {id:'water_consumption',domain:'Environmental',topic:'Water',icon:'💧',name:'용수 사용량',unit:'ton',owner:'총무/환경',cycle:'월',standard:'GRI 303',dueDay:7,desc:'상수, 지하수, 공업용수 등 월간 취수량 합계',evidence:'수도요금 고지서, 검침자료'},
+  {id:'waste_total',domain:'Environmental',topic:'Waste',icon:'🗑️',name:'폐기물 발생량',unit:'ton',owner:'환경/총무',cycle:'월',standard:'GRI 306',dueDay:7,desc:'일반·지정폐기물 발생량과 처리방법',evidence:'올바로 실적, 처리확인서'},
+  {id:'waste_recycle',domain:'Environmental',topic:'Waste',icon:'♻️',name:'폐기물 재활용량',unit:'ton',owner:'환경/총무',cycle:'월',standard:'GRI 306',dueDay:7,desc:'재활용 처리된 폐기물량',evidence:'재활용 처리확인서'},
+  {id:'air_pollutants',domain:'Environmental',topic:'Air',icon:'🌫️',name:'대기오염물질 배출량',unit:'kg',owner:'환경',cycle:'월',standard:'환경 법규/내부 KPI',dueDay:10,desc:'NOx, SOx, 먼지, VOC 등 측정결과',evidence:'자가측정 결과, 측정성적서'},
+  {id:'employee_total',domain:'Social',topic:'Employment',icon:'👥',name:'총 임직원 수',unit:'명',owner:'인사',cycle:'월',standard:'GRI 2-7',dueDay:5,desc:'월말 기준 총 재직 인원',evidence:'인사시스템 집계표'},
+  {id:'employee_gender_female',domain:'Social',topic:'Diversity',icon:'⚖️',name:'여성 임직원 수',unit:'명',owner:'인사',cycle:'월',standard:'GRI 405',dueDay:5,desc:'월말 기준 여성 재직 인원',evidence:'인사시스템 집계표'},
+  {id:'regular_workers',domain:'Social',topic:'Employment',icon:'📋',name:'정규직 인원',unit:'명',owner:'인사',cycle:'월',standard:'GRI 2-7',dueDay:5,desc:'월말 기준 정규직 인원',evidence:'인사시스템 집계표'},
+  {id:'new_hires',domain:'Social',topic:'Hiring',icon:'➕',name:'신규 채용 인원',unit:'명',owner:'인사',cycle:'월',standard:'GRI 401',dueDay:5,desc:'해당 월 신규 입사자 수',evidence:'채용 현황표'},
+  {id:'turnover',domain:'Social',topic:'Turnover',icon:'↘️',name:'퇴사 인원',unit:'명',owner:'인사',cycle:'월',standard:'GRI 401',dueDay:5,desc:'해당 월 퇴사자 수',evidence:'퇴사 현황표'},
+  {id:'training_hours',domain:'Social',topic:'Training',icon:'🎓',name:'임직원 총 교육시간',unit:'시간',owner:'인사/교육',cycle:'월',standard:'GRI 404',dueDay:10,desc:'법정교육, 직무교육 등 총 교육시간',evidence:'교육 결과보고서, 서명부'},
+  {id:'accidents',domain:'Health & Safety',topic:'Safety',icon:'🦺',name:'산업재해 발생 건수',unit:'건',owner:'안전보건',cycle:'월',standard:'GRI 403',dueDay:7,desc:'해당 월 업무상 사고 건수',evidence:'사고보고서, 산재조사표'},
+  {id:'lost_days',domain:'Health & Safety',topic:'Safety',icon:'⏱️',name:'근로손실일수',unit:'일',owner:'안전보건',cycle:'월',standard:'GRI 403',dueDay:7,desc:'산업재해로 인한 근로손실일수',evidence:'재해자 근태자료'},
+  {id:'supplier_eval',domain:'Supply Chain',topic:'Supplier ESG',icon:'🏭',name:'협력사 ESG 평가 완료 수',unit:'개사',owner:'구매/품질',cycle:'분기',standard:'GRI 308, 414',dueDay:15,desc:'ESG 평가 완료 협력사 수',evidence:'협력사 평가표'},
+  {id:'supplier_due_diligence',domain:'Supply Chain',topic:'Due Diligence',icon:'🔎',name:'공급망 실사 완료 수',unit:'개사',owner:'구매/품질',cycle:'분기',standard:'공급망 실사',dueDay:15,desc:'현장/서면 실사 완료 협력사 수',evidence:'실사보고서, 개선계획'},
+  {id:'ethics_training',domain:'Governance',topic:'Ethics',icon:'⚖️',name:'윤리·준법 교육시간',unit:'시간',owner:'총무/인사',cycle:'월',standard:'GRI 205',dueDay:10,desc:'윤리, 반부패, 준법 교육시간',evidence:'교육 결과보고서, 서명부'},
+  {id:'grievance_cases',domain:'Governance',topic:'Grievance',icon:'📨',name:'고충·제보 접수 건수',unit:'건',owner:'인사/감사',cycle:'월',standard:'GRI 2-25, 2-26',dueDay:10,desc:'개인정보 제외한 접수 건수',evidence:'고충처리 접수대장'}
+];
+
+function saveEsg(){ localStorage.setItem(STORE, JSON.stringify(esgRecords)); }
+function saveGhg(){ localStorage.setItem(GHG_STORE, JSON.stringify(ghgRecords)); }
+function filter(){ return {year:+$('year').value,month:+$('month').value,company:$('company').value,site:$('site').value}; }
+function baseMatch(r){ const f=filter(); return r.year===f.year && r.month===f.month && r.company===f.company && r.site===f.site; }
+function metricRecord(id){ return esgRecords.find(r => baseMatch(r) && r.metricId===id); }
+function fmt(v,d=3){ const n=Number(v||0); return n.toLocaleString(undefined,{maximumFractionDigits:d}); }
 function esc(v){ return String(v ?? '').replace(/[&<>"]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[s])); }
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+function statusLabel(r){ if(!r) return ['not-started','미작성']; if(r.status==='approved') return ['approved','승인']; if(r.status==='returned') return ['returned','반려']; if(r.status==='submitted') return ['submitted','제출']; return ['draft','작성중']; }
+function dueText(m){ const f=filter(); return `${f.month}/${String(m.dueDay).padStart(2,'0')}`; }
+function domainList(){ return ['all',...new Set(metrics.map(m=>m.domain))]; }
+
+function injectCommercialCss(){
+  const style=document.createElement('style'); style.id='commercial-esg-ux-style';
+  style.textContent=`
+    .workspace{display:grid;gap:18px}.heroGrid{display:grid;grid-template-columns:1.25fr .75fr;gap:18px}.heroPanel{background:linear-gradient(135deg,#172335,#245081);color:white;border-radius:24px;padding:24px;box-shadow:var(--shadow);min-height:210px}.heroPanel h2{margin:0 0 10px;font-size:26px}.heroPanel p{margin:0;color:#d8e6f7;line-height:1.55}.heroActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.heroActions .btn.secondary{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:white}.donutPanel{background:white;border:1px solid var(--line);border-radius:24px;padding:22px;box-shadow:var(--shadow);display:grid;place-items:center;text-align:center}.donut{width:156px;height:156px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--green) calc(var(--p)*1%),#e8eef6 0);position:relative}.donut:after{content:"";position:absolute;width:108px;height:108px;border-radius:50%;background:white}.donut strong{z-index:1;font-size:30px}.donut span{z-index:1;color:var(--muted);font-size:12px;font-weight:900}.statusGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.statusCard{background:white;border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:var(--shadow)}.statusCard b{display:block;font-size:26px;margin:6px 0}.statusCard span{font-size:12px;color:var(--muted);font-weight:900}.moduleStrip{display:grid;grid-template-columns:repeat(8,minmax(90px,1fr));gap:10px}.moduleIcon{background:white;border:1px solid var(--line);border-radius:18px;padding:14px;text-align:center;box-shadow:var(--shadow);cursor:pointer}.moduleIcon.active{border-color:#7eb5ed;background:#f1f8ff}.moduleIcon .ico{font-size:25px}.moduleIcon b{display:block;font-size:12px;margin-top:7px}.board{display:grid;grid-template-columns:300px 1fr;gap:18px}.collectionList{background:white;border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);overflow:hidden}.collectionHeader{padding:16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}.domainTabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.domainTabs button{border:1px solid var(--line);background:white;color:#40546c;border-radius:999px;padding:9px 12px;font-weight:900}.domainTabs button.active{background:var(--brand);color:white}.metricItem{display:grid;grid-template-columns:38px 1fr auto;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);cursor:pointer;align-items:center}.metricItem:hover,.metricItem.active{background:#f6faff}.metricItem .icon{width:36px;height:36px;border-radius:12px;background:#eef6ff;display:grid;place-items:center}.metricItem h4{margin:0;font-size:14px}.metricItem p{margin:4px 0 0;font-size:12px;color:var(--muted)}.pill{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:900;white-space:nowrap}.pill.not-started{background:#f1f5f9;color:#64748b}.pill.draft{background:#fff7e8;color:#a96900}.pill.submitted{background:#eef6ff;color:#1d4ed8}.pill.approved{background:#edf9f5;color:#0f8f69}.pill.returned{background:#fff0f0;color:#d64545}.detailPanel{background:white;border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:20px;min-height:560px}.detailHead{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:16px}.detailHead h2{margin:0 0 6px}.detailMeta{display:flex;gap:7px;flex-wrap:wrap}.entryFormGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.entryFormGrid .wide{grid-column:1/-1}.uploadBox{border:1px dashed #b9cde5;background:#f8fbff;border-radius:16px;padding:16px;color:#52657c}.reviewFlow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}.flowStep{border:1px solid var(--line);border-radius:14px;padding:10px;background:#f8fbff;text-align:center;font-size:12px;font-weight:900;color:#506176}.flowStep.on{background:#eaf7f2;color:var(--green);border-color:#b7e5d6}.quickTable{margin-top:16px}.trendGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}.trendBox{background:#f8fbff;border:1px solid var(--line);border-radius:14px;padding:12px}.trendBox b{display:block;font-size:18px}.carbonGrid{display:grid;grid-template-columns:390px 1fr;gap:18px}.carbonForm,.carbonSide{background:white;border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:20px}.carbonSummary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}.carbonSummary .kpi{box-shadow:none}.factorPreview{background:#f8fbff;border:1px solid #dce8f5;border-radius:16px;padding:14px;margin-top:12px;font-size:13px;color:#52657c}.factorPreview b{color:#173f69}.carbonTableWrap{max-height:560px;overflow:auto;border:1px solid var(--line);border-radius:16px}.carbonToolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.reportGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.reportCard{background:white;border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow)}.reportCard h3{margin:0 0 8px}.evidenceList{display:grid;gap:10px}.evidenceCard{display:grid;grid-template-columns:1fr auto;gap:10px;background:white;border:1px solid var(--line);border-radius:16px;padding:14px}.linkBtn{color:inherit;text-decoration:none}@media(max-width:1200px){.heroGrid,.board,.carbonGrid{grid-template-columns:1fr}.moduleStrip{grid-template-columns:repeat(4,1fr)}.statusGrid,.carbonSummary{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.moduleStrip,.statusGrid,.entryFormGrid,.reviewFlow,.trendGrid,.reportGrid,.carbonSummary{grid-template-columns:1fr}.detailHead{flex-direction:column}.board{gap:12px}}
+  `;
+  document.head.appendChild(style);
+}
+
+async function loadFactors(){
+  emissionFactors = factorFallback.map(normalizeFactor);
+  if(!window.supabase || !window.SEMS_SUPABASE_CONFIG) return;
+  try{
+    const cfg=window.SEMS_SUPABASE_CONFIG;
+    if(!cfg.url || !cfg.anonKey) return;
+    const sb=window.supabase.createClient(cfg.url,cfg.anonKey,{auth:{storage:window.sessionStorage,persistSession:true,autoRefreshToken:true}});
+    const {data,error}=await sb.from('sems_emission_factors').select('*');
+    if(!error && Array.isArray(data) && data.length) emissionFactors=data.map(normalizeFactor);
+  }catch(e){ console.warn('SEMS factor load skipped', e); }
+}
+function normalizeFactor(f){ return {id:f.id || [f.scope,f.source,f.sub_source||f.subSource||''].join('|'),source:f.source,scope:f.scope,subSource:f.sub_source || f.subSource || '',baseUnit:f.base_unit || f.baseUnit || '',factor:Number(f.factor||0),factorUnit:f.factor_unit || f.factorUnit || '',factorSource:f.factor_source || f.factorSource || '',factorYear:f.factor_year || f.factorYear || '',units:Array.isArray(f.units)?f.units:[]}; }
+function selectedFactor(){ const scope=$('ghgScope')?.value; const source=$('ghgSource')?.value; const sub=$('ghgSubSource')?.value || ''; return emissionFactors.find(f=>f.scope===scope && f.source===source && (f.subSource||'')===sub) || emissionFactors.find(f=>f.scope===scope && f.source===source); }
+function calculateEmission(amount,f,unitLabel){ const u=(f.units||[]).find(x=>x.label===unitLabel) || {multiplier:1,label:unitLabel}; return amount * Number(u.multiplier||1) * Number(f.factor||0) / 1000; }
 
 function init(){
-  $('year').innerHTML = Array.from({length:7},(_,i)=>2024+i).map(y=>`<option ${y===now.getFullYear()?'selected':''}>${y}</option>`).join('');
-  $('month').innerHTML = Array.from({length:12},(_,i)=>`<option value="${i+1}" ${i+1===now.getMonth()+1?'selected':''}>${i+1}월</option>`).join('');
-  $('company').innerHTML = companies.map((c,i)=>`<option ${i===0?'selected':''}>${c}</option>`).join('');
-  $('site').innerHTML = sites.map((s,i)=>`<option ${i===0?'selected':''}>${s}</option>`).join('');
-  $('nav').innerHTML = pages.map(([id,name,badge],i)=>`<button class="${i===0?'active':''}" data-page="${id}"><span>${name}</span><small>${badge}</small></button>`).join('');
+  injectCommercialCss();
+  $('year').innerHTML=Array.from({length:7},(_,i)=>2024+i).map(y=>`<option ${y===now.getFullYear()?'selected':''}>${y}</option>`).join('');
+  $('month').innerHTML=Array.from({length:12},(_,i)=>`<option value="${i+1}" ${i+1===now.getMonth()+1?'selected':''}>${i+1}월</option>`).join('');
+  $('company').innerHTML=companies.map((c,i)=>`<option ${i===0?'selected':''}>${c}</option>`).join('');
+  updateSites();
+  $('company').addEventListener('change',()=>{updateSites();render();});
+  ['year','month','site'].forEach(id=>$(id).addEventListener('change',render));
+  $('nav').innerHTML=pages.map(([id,name,badge],i)=>`<button class="${i===0?'active':''}" data-page="${id}"><span>${name}</span><small>${badge}</small></button>`).join('');
   document.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.page)));
-  ['year','month','company','site'].forEach(id=>$(id).addEventListener('change',render));
-  $('exportBtn').addEventListener('click', exportData);
-  $('importBtn').addEventListener('click', ()=>$('importFile').click());
-  $('importFile').addEventListener('change', importData);
-  render();
+  $('exportBtn').addEventListener('click',exportData);
+  $('importBtn').addEventListener('click',()=>$('importFile').click());
+  $('importFile').addEventListener('change',importData);
+  selectedMetric = metrics[0].id;
+  loadFactors().then(render);
 }
+function updateSites(){ const company=$('company').value || companies[0]; $('site').innerHTML=(sitesByCompany[company]||[company]).map(s=>`<option>${s}</option>`).join(''); }
+function openPage(id){ page=id; document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===id)); const meta=pages.find(p=>p[0]===id); $('pageTitle').textContent=meta?meta[1]:'SEMS-T'; $('pageSub').textContent={dashboard:'상용 ESG 시스템처럼 진행률, 요청, 검토상태, 누락 데이터를 한 화면에서 봅니다.',collect:'담당자별 데이터 요청을 선택해 값, 증빙, 비고를 제출합니다.',ghg:'기존 SEMS와 같은 활동자료·배출원·배출계수 방식으로 입력합니다.',library:'보고서와 실사에 필요한 KPI/ESG 지표 마스터입니다.',evidence:'제출된 값과 연결된 증빙자료를 추적합니다.',reports:'지속가능경영보고서 항목별로 입력 데이터를 매핑합니다.',settings:'운영형 전환을 위한 데이터 구조입니다.'}[id] || ''; render(); }
+window.openPage=openPage;
 
-function openPage(id){
-  page=id;
-  document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
-  const meta = pages.find(p=>p[0]===id);
-  $('pageTitle').textContent=meta ? meta[1] : 'SEMS-T';
-  $('pageSub').textContent={dashboard:'분야별 입력현황과 누락된 보고서 데이터를 확인합니다.',ghg:'온실가스는 기존 SEMS 산정화면과 배출계수 구조를 그대로 사용합니다.',environment:'환경자료는 용수·폐기물·대기 탭별 입력대장으로 작성합니다.',people:'인사자료는 보고서용 집계값을 대장 형태로 작성합니다.',safety:'안전보건은 사고·손실일수·개선조치를 함께 관리합니다.',supply:'공급망·윤리 데이터는 평가, 실사, 제보 항목별 대장으로 관리합니다.',map:'분야별 입력값이 지속가능경영보고서 항목과 어떻게 연결되는지 확인합니다.',settings:'운영형 서비스 전환 시 필요한 DB 구조입니다.'}[id] || '';
-  render();
-}
-window.openPage = openPage;
+function render(){ if(page==='dashboard') return renderDashboard(); if(page==='collect') return renderCollect(); if(page==='ghg') return renderGhg(); if(page==='library') return renderLibrary(); if(page==='evidence') return renderEvidence(); if(page==='reports') return renderReports(); if(page==='settings') return renderSettings(); }
+function currentRows(){ return metrics.map(m=>({metric:m,record:metricRecord(m.id)})); }
+function progress(){ const rows=currentRows(); const done=rows.filter(x=>x.record).length; const approved=rows.filter(x=>x.record?.status==='approved').length; const submitted=rows.filter(x=>x.record?.status==='submitted').length; const returned=rows.filter(x=>x.record?.status==='returned').length; const draft=rows.filter(x=>x.record?.status==='draft').length; return {total:rows.length,done,approved,submitted,returned,draft,notStarted:rows.length-done,rate:Math.round(done/rows.length*100)}; }
+function renderDashboard(){ const p=progress(); const f=filter(); const ghgTotal=ghgRecords.filter(baseMatch).reduce((s,r)=>s+Number(r.emission||0),0); $('content').innerHTML=`<div class="workspace"><div class="heroGrid"><div class="heroPanel"><h2>${f.year}년 ${f.month}월 ESG Data Collection</h2><p>보고서 담당자가 엑셀을 돌리는 구조가 아니라, 현업 담당자에게 데이터 요청을 보내고 제출·검토·승인 상태를 추적하는 구조입니다. 온실가스는 기존 SEMS식 산정 입력을 별도 탄소회계 모듈로 관리합니다.</p><div class="heroActions"><button class="btn green" onclick="openPage('collect')">데이터 요청 처리</button><button class="btn secondary" onclick="openPage('ghg')">온실가스 입력</button></div></div><div class="donutPanel"><div class="donut" style="--p:${p.rate}"><strong>${p.rate}%</strong><span>Done</span></div><p style="margin-top:14px">${p.done}/${p.total}개 지표 입력</p></div></div><div class="statusGrid"><div class="statusCard"><span>Pending</span><b>${p.notStarted}</b><span>미작성</span></div><div class="statusCard"><span>Submitted</span><b>${p.submitted}</b><span>검토 대기</span></div><div class="statusCard"><span>Approved</span><b>${p.approved}</b><span>확정 데이터</span></div><div class="statusCard"><span>GHG Emissions</span><b>${fmt(ghgTotal)}</b><span>tCO₂e</span></div></div><div class="panel"><h2>데이터 카테고리</h2>${renderModuleStrip()}</div><div class="grid2"><div class="panel"><h2>우선 처리 요청</h2>${renderTodoList()}</div><div class="panel"><h2>분야별 진행률</h2>${renderDomainProgress()}</div></div></div>`; }
+function renderModuleStrip(){ const mods=[['Employment','👥'],['Emission','🏭'],['Energy','⚡'],['Water','💧'],['Waste','🗑️'],['Training','🎓'],['Safety','🦺'],['Supplier','🔎']]; return `<div class="moduleStrip">${mods.map(([n,i])=>`<div class="moduleIcon" onclick="openPage('${n==='Emission'?'ghg':'collect'}')"><div class="ico">${i}</div><b>${n}</b></div>`).join('')}</div>`; }
+function renderTodoList(){ return currentRows().filter(x=>!x.record || x.record.status==='returned').slice(0,8).map(x=>{const [cls,label]=statusLabel(x.record);return `<div class="task"><div><b>${x.metric.icon} ${x.metric.name}</b><span>${x.metric.owner} · ${x.metric.standard} · 마감 ${dueText(x.metric)}</span></div><button class="btn secondary small" onclick="selectMetric('${x.metric.id}')">작성</button></div>`}).join('') || '<div class="empty">처리할 요청이 없습니다.</div>'; }
+function renderDomainProgress(){ const domains=[...new Set(metrics.map(m=>m.domain))]; return domains.map(d=>{const list=metrics.filter(m=>m.domain===d); const done=list.filter(m=>metricRecord(m.id)).length; const rate=Math.round(done/list.length*100); return `<div class="progressRow"><b>${d}</b><div class="bar"><span style="width:${rate}%"></span></div><em>${rate}%</em></div>`}).join(''); }
 
-function render(){
-  if(page==='dashboard') return renderDashboard();
-  if(page==='ghg') return renderGhgLink();
-  if(templates[page]) return renderArea(page);
-  if(page==='map') return renderMap();
-  if(page==='settings') return renderSettings();
-}
+function renderCollect(){ $('content').innerHTML=`<div class="workspace"><div class="domainTabs">${domainList().map(d=>`<button class="${activeDomain===d?'active':''}" onclick="setDomain('${d}')">${d==='all'?'All':d}</button>`).join('')}</div><div class="board"><div class="collectionList"><div class="collectionHeader"><b>Data Requests</b><span class="pill submitted">${progress().done}/${progress().total}</span></div>${filteredMetrics().map(renderMetricItem).join('')}</div><div class="detailPanel">${renderMetricDetail()}</div></div></div>`; }
+function setDomain(d){ activeDomain=d; const first=filteredMetrics()[0]; if(first) selectedMetric=first.id; renderCollect(); } window.setDomain=setDomain;
+function filteredMetrics(){ return activeDomain==='all'?metrics:metrics.filter(m=>m.domain===activeDomain); }
+function renderMetricItem(m){ const r=metricRecord(m.id); const [cls,label]=statusLabel(r); return `<div class="metricItem ${selectedMetric===m.id?'active':''}" onclick="selectMetric('${m.id}',false)"><div class="icon">${m.icon}</div><div><h4>${m.name}</h4><p>${m.owner} · ${m.standard}</p></div><span class="pill ${cls}">${label}</span></div>`; }
+function selectMetric(id,go=true){ selectedMetric=id; if(go) page='collect'; document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page==='collect')); renderCollect(); } window.selectMetric=selectMetric;
+function renderMetricDetail(){ const m=metrics.find(x=>x.id===selectedMetric)||filteredMetrics()[0]||metrics[0]; selectedMetric=m.id; const r=metricRecord(m.id)||{}; const [cls,label]=statusLabel(r); return `<div class="detailHead"><div><h2>${m.icon} ${m.name}</h2><p>${m.desc}</p><div class="detailMeta"><span class="pill ${cls}">${label}</span><span class="pill not-started">${m.domain}</span><span class="pill not-started">${m.standard}</span><span class="pill not-started">담당 ${m.owner}</span></div></div><button class="btn green" onclick="submitMetric('${m.id}')">제출</button></div><div class="entryFormGrid"><div class="field"><label>값</label><input id="metricValue" type="number" step="0.0001" value="${esc(r.value||'')}" placeholder="숫자 입력" /></div><div class="field"><label>단위</label><input value="${m.unit}" readonly /></div><div class="field"><label>기준기간</label><input value="${filter().year}년 ${filter().month}월" readonly /></div><div class="field"><label>마감일</label><input value="매월 ${m.dueDay}일" readonly /></div><div class="field wide"><label>증빙자료</label><div class="uploadBox"><b>Drag & Drop 대신 파일명/URL 입력</b><input id="metricEvidence" value="${esc(r.evidence||'')}" placeholder="예: 수도요금_2026_07.pdf 또는 URL" style="margin-top:8px"/><p>증빙 예시: ${m.evidence}</p></div></div><div class="field wide"><label>비고 / 산정 기준</label><textarea id="metricNote" placeholder="전월 대비 증감 사유, 집계 기준, 제외 범위 등">${esc(r.note||'')}</textarea></div></div><div class="reviewFlow"><div class="flowStep on">1. 요청</div><div class="flowStep ${r.value?'on':''}">2. 작성</div><div class="flowStep ${r.status==='submitted'||r.status==='approved'?'on':''}">3. 제출</div><div class="flowStep ${r.status==='approved'?'on':''}">4. 승인</div></div><div class="tools" style="margin-top:14px"><button class="btn secondary" onclick="saveMetric('${m.id}','draft')">임시저장</button><button class="btn green" onclick="saveMetric('${m.id}','submitted')">제출완료</button><button class="btn secondary" onclick="approveMetric('${m.id}')">검토승인</button><button class="btn secondary" onclick="returnMetric('${m.id}')">반려</button></div>${renderMetricHistory(m.id)}`; }
+function saveMetric(id,status='draft'){ const m=metrics.find(x=>x.id===id); const f=filter(); const value=$('metricValue').value; const evidence=$('metricEvidence').value.trim(); const note=$('metricNote').value.trim(); esgRecords=esgRecords.filter(r=>!(baseMatch(r)&&r.metricId===id)); esgRecords.push({...f,metricId:id,value:Number(value||0),unit:m.unit,evidence,note,status,updatedAt:new Date().toISOString()}); saveEsg(); renderCollect(); toast(status==='submitted'?'제출되었습니다.':'저장되었습니다.'); }
+function submitMetric(id){ saveMetric(id,'submitted'); } window.submitMetric=submitMetric; window.saveMetric=saveMetric;
+function approveMetric(id){ const r=metricRecord(id); if(!r){toast('먼저 값을 저장해 주세요.');return;} r.status='approved'; r.updatedAt=new Date().toISOString(); saveEsg(); renderCollect(); toast('검토승인 처리했습니다.'); } window.approveMetric=approveMetric;
+function returnMetric(id){ const r=metricRecord(id); if(!r){toast('먼저 값을 저장해 주세요.');return;} r.status='returned'; r.updatedAt=new Date().toISOString(); saveEsg(); renderCollect(); toast('반려 처리했습니다.'); } window.returnMetric=returnMetric;
+function renderMetricHistory(id){ const rows=esgRecords.filter(r=>r.metricId===id).slice(-5); if(!rows.length) return ''; return `<div class="quickTable"><h3>최근 입력 이력</h3><div class="tableWrap"><table><thead><tr><th>기간</th><th>값</th><th>상태</th><th>증빙</th></tr></thead><tbody>${rows.map(r=>{const [c,l]=statusLabel(r);return `<tr><td>${r.year}.${String(r.month).padStart(2,'0')}</td><td>${fmt(r.value)} ${r.unit}</td><td><span class="pill ${c}">${l}</span></td><td>${esc(r.evidence||'-')}</td></tr>`}).join('')}</tbody></table></div></div>`; }
 
-function currentCompletion(){
-  const rows=[];
-  Object.entries(templates).forEach(([area,t])=>t.sheets.forEach(s=>s.rows.forEach((row,idx)=>rows.push({area,sheet:s.id,rowId:`r${idx}`,label:row}))));
-  const done = rows.filter(x=>getRecord(x.area,x.sheet,x.rowId));
-  const evidence = records.filter(matchBase).filter(r=>Object.values(r.data||{}).some(v=>String(v||'').includes('증빙')===false) && (r.data.evidence || r.data.report || r.data.file || r.data['증빙'])).length;
-  return {total:rows.length, done:done.length, missing:rows.length-done.length, evidence};
-}
+function renderGhg(){ const f=filter(); const rows=ghgRecords.filter(baseMatch); const total=rows.reduce((s,r)=>s+Number(r.emission||0),0); $('content').innerHTML=`<div class="workspace"><div class="carbonSummary"><div class="kpi"><div class="label">총 배출량</div><div class="value">${fmt(total)}</div><div class="desc">tCO₂e</div></div>${['Scope 1','Scope 2','Scope 3'].map(s=>`<div class="kpi"><div class="label">${s}</div><div class="value">${fmt(rows.filter(r=>r.scope===s).reduce((a,b)=>a+Number(b.emission||0),0))}</div><div class="desc">tCO₂e</div></div>`).join('')}</div><div class="carbonGrid"><div class="carbonForm"><h2>활동자료 입력</h2><p>기존 SEMS처럼 회사·사업장·기간을 기준으로 Scope, 배출원, 세부구분, 사용량을 입력하면 연결된 배출계수로 자동 산정합니다.</p>${renderGhgForm()}</div><div class="carbonSide"><div class="carbonToolbar"><button class="btn secondary" onclick="clearGhgForm()">입력 초기화</button><button class="btn secondary" onclick="exportGhgCsv()">CSV 내보내기</button></div><div class="carbonTableWrap"><table><thead><tr><th>기간</th><th>Scope</th><th>배출원</th><th>세부구분</th><th>사용량</th><th>계수</th><th>배출량</th><th>비고</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.year}.${String(r.month).padStart(2,'0')}</td><td>${r.scope}</td><td>${r.source}</td><td>${r.subSource||'-'}</td><td>${fmt(r.amount)} ${r.unit}</td><td>${r.factor}</td><td><b>${fmt(r.emission)}</b></td><td>${esc(r.memo||'')}</td></tr>`).join('')||'<tr><td colspan="8" class="empty">입력된 온실가스 활동자료가 없습니다.</td></tr>'}</tbody></table></div></div></div></div>`; bindGhgControls(); updateGhgControls(); }
+function renderGhgForm(){ return `<div class="entryFormGrid"><div class="field"><label>등록 부서</label><select id="ghgDept"><option>총무</option><option>자재</option><option>영업</option><option>품질</option><option>공정기술</option><option>생산</option><option>구매</option></select></div><div class="field"><label>Scope</label><select id="ghgScope"><option>Scope 1</option><option>Scope 2</option><option>Scope 3</option></select></div><div class="field"><label>배출원</label><select id="ghgSource"></select></div><div class="field"><label>세부 구분</label><select id="ghgSubSource"></select></div><div class="field"><label>상세 내용</label><input id="ghgDetail" placeholder="예: 법인차, 지게차, 보일러" /></div><div class="field"><label>사용량</label><input id="ghgAmount" type="number" step="0.0001" placeholder="숫자 입력" /></div><div class="field"><label>단위</label><select id="ghgUnit"></select></div><div class="field"><label>비고</label><input id="ghgMemo" placeholder="산정 특이사항" /></div><div class="wide factorPreview" id="factorPreview"></div><div class="wide tools"><button class="btn green" onclick="saveGhgEntry()">활동자료 저장</button></div></div>`; }
+function bindGhgControls(){ ['ghgScope','ghgSource','ghgSubSource','ghgUnit','ghgAmount'].forEach(id=>{const el=$(id); if(el) el.addEventListener(id==='ghgAmount'?'input':'change',updateGhgControls);}); }
+function updateGhgControls(){ if(!$('ghgScope')) return; const scope=$('ghgScope').value; const sourceSel=$('ghgSource'); const prev=sourceSel.value; const sources=[...new Set(emissionFactors.filter(f=>f.scope===scope).map(f=>f.source))]; sourceSel.innerHTML=sources.map(s=>`<option ${s===prev?'selected':''}>${s}</option>`).join(''); if(prev && sources.includes(prev)) sourceSel.value=prev; const source=sourceSel.value; const subSel=$('ghgSubSource'); const prevSub=subSel.value; const subs=[...new Set(emissionFactors.filter(f=>f.scope===scope&&f.source===source).map(f=>f.subSource||''))]; subSel.innerHTML=subs.map(s=>`<option value="${esc(s)}" ${s===prevSub?'selected':''}>${s||'-'}</option>`).join(''); if(prevSub && subs.includes(prevSub)) subSel.value=prevSub; const f=selectedFactor(); const unitSel=$('ghgUnit'); const prevU=unitSel.value; unitSel.innerHTML=((f&&f.units.length)?f.units:[{label:f?.baseUnit||'단위',multiplier:1}]).map(u=>`<option ${u.label===prevU?'selected':''}>${u.label}</option>`).join(''); if(prevU) unitSel.value=prevU; updateFactorPreview(); }
+function updateFactorPreview(){ const f=selectedFactor(); if(!f){$('factorPreview').innerHTML='배출계수를 찾을 수 없습니다.';return;} const amount=Number($('ghgAmount')?.value||0); const unit=$('ghgUnit')?.value; const emission=calculateEmission(amount,f,unit); $('factorPreview').innerHTML=`<b>적용 배출계수</b><br>${esc(f.scope)} · ${esc(f.source)} · ${esc(f.subSource||'-')}<br>계수: <b>${f.factor}</b> ${esc(f.factorUnit)} / 기준단위: ${esc(f.baseUnit)}<br>출처: ${esc(f.factorSource||'-')} (${esc(f.factorYear||'-')})<br>예상 배출량: <b>${fmt(emission)}</b> tCO₂e`; }
+function saveGhgEntry(){ const f=selectedFactor(); if(!f){toast('배출계수를 확인해 주세요.');return;} const amount=Number($('ghgAmount').value||0); if(!amount){toast('사용량을 입력해 주세요.');return;} const unit=$('ghgUnit').value; const emission=calculateEmission(amount,f,unit); ghgRecords.push({...filter(),id:Date.now().toString(36),department:$('ghgDept').value,scope:f.scope,source:f.source,subSource:f.subSource,usageDetail:$('ghgDetail').value.trim(),amount,unit,baseUnit:f.baseUnit,factor:f.factor,factorUnit:f.factorUnit,emission,memo:$('ghgMemo').value.trim(),updatedAt:new Date().toISOString()}); saveGhg(); renderGhg(); toast('온실가스 활동자료가 저장되었습니다.'); } window.saveGhgEntry=saveGhgEntry;
+function clearGhgForm(){ renderGhg(); } window.clearGhgForm=clearGhgForm;
+function exportGhgCsv(){ const rows=ghgRecords.filter(baseMatch); const csv='연도,월,회사,사업장,부서,Scope,배출원,세부구분,상세내용,사용량,단위,배출계수,배출량(tCO2e),비고\n'+rows.map(r=>[r.year,r.month,r.company,r.site,r.department,r.scope,r.source,r.subSource,r.usageDetail,r.amount,r.unit,r.factor,r.emission,r.memo].map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n'); const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sems_t_ghg_activity_data.csv'; a.click(); URL.revokeObjectURL(a.href); } window.exportGhgCsv=exportGhgCsv;
 
-function renderDashboard(){
-  const f=filter(); const c=currentCompletion();
-  $('content').innerHTML = `
-    <div class="panel intro"><h2>${f.year}년 ${f.month}월 지속가능경영 데이터 입력현황</h2><p>온실가스는 기존 SEMS를 그대로 사용하고, 그 외 지속가능경영보고서 데이터는 분야별 입력대장 방식으로 작성합니다. 담당자는 자기 분야 탭에서 엑셀처럼 한 줄씩 채우고 한 번에 저장하면 됩니다.</p></div>
-    <div class="kpis"><div class="kpi"><div class="label">입력대상 행</div><div class="value">${c.total}</div><div class="desc">환경·인사·안전·공급망</div></div><div class="kpi"><div class="label">작성완료</div><div class="value">${c.done}</div><div class="desc">선택 회사·사업장 기준</div></div><div class="kpi"><div class="label">미작성</div><div class="value">${c.missing}</div><div class="desc">확인 필요</div></div><div class="kpi"><div class="label">온실가스</div><div class="value">SEMS</div><div class="desc">기존 산정·배출계수 사용</div></div></div>
-    <div class="grid2"><div class="panel"><h2>분야별 입력률</h2>${progressRows()}</div><div class="panel"><h2>작업 바로가기</h2>${quickLinks()}</div></div>`;
-}
-
-function progressRows(){
-  return Object.entries(templates).map(([area,t])=>{ const total=t.sheets.reduce((a,s)=>a+s.rows.length,0); let done=0; t.sheets.forEach(s=>s.rows.forEach((_,idx)=>{ if(getRecord(area,s.id,`r${idx}`)) done++; })); const rate=Math.round(done/total*100); return `<div class="progressRow"><b>${t.title.replace(' 입력대장','')}</b><div class="bar"><span style="width:${rate}%"></span></div><em>${rate}%</em></div>`; }).join('');
-}
-
-function quickLinks(){
-  return `<div class="task"><div><b>온실가스 배출량 입력</b><span>기존 SEMS 화면과 배출계수 세트를 그대로 사용합니다.</span></div><button class="btn secondary small" onclick="openPage('ghg')">열기</button></div>` + Object.entries(templates).map(([area,t])=>`<div class="task"><div><b>${t.title}</b><span>${t.desc}</span></div><button class="btn secondary small" onclick="openPage('${area}')">작성</button></div>`).join('');
-}
-
-function renderGhgLink(){
-  $('content').innerHTML = `<div class="panel intro"><h2>온실가스 입력은 기존 SEMS 방식 사용</h2><p>Scope 1·2·3을 새로 만든 단순 양식으로 입력하지 않습니다. 기존 SEMS의 배출량 산정 흐름, 회사별 데이터 구조, 적용 배출계수 세트를 그대로 불러옵니다.</p><div class="tools"><a class="btn green linkBtn" href="ghg.html">기존 SEMS 온실가스 화면 열기</a><a class="btn secondary linkBtn" href="ghg.html" target="_blank">새 창으로 열기</a></div></div><div class="panel framePanel"><iframe src="ghg.html" title="기존 SEMS 온실가스 입력"></iframe></div>`;
-}
-
-function renderArea(area){
-  const t=templates[area]; const sheet=t.sheets.find(s=>s.id===activeSheet[area]) || t.sheets[0]; activeSheet[area]=sheet.id;
-  $('content').innerHTML = `<div class="panel intro"><h2>${t.title}</h2><p>${t.desc}</p><div class="sheetTabs">${t.sheets.map(s=>`<button class="sheetTab ${s.id===sheet.id?'active':''}" onclick="setSheet('${area}','${s.id}')">${s.name}</button>`).join('')}</div></div><div class="panel"><div class="sheetHeader"><div><h2>${sheet.name}</h2><p>${sheet.guide}</p></div><button class="btn green" onclick="saveSheet('${area}','${sheet.id}')">이 대장 저장</button></div>${renderSheet(area,sheet)}</div>`;
-}
-window.setSheet = function(area,id){ activeSheet[area]=id; renderArea(area); };
-
-function renderSheet(area,sheet){
-  return `<div class="tableWrap sheetWrap"><table class="sheetTable"><thead><tr>${sheet.cols.map(c=>`<th>${c[1]}</th>`).join('')}<th>상태</th></tr></thead><tbody>${sheet.rows.map((row,idx)=>renderRow(area,sheet,row,idx)).join('')}</tbody></table></div>`;
-}
-
-function renderRow(area,sheet,row,idx){
-  const rowId=`r${idx}`; const rec=getRecord(area,sheet.id,rowId); const data=rec ? rec.data : {}; const status=rec ? '<span class="status done">저장됨</span>' : '<span class="status miss">미작성</span>';
-  return `<tr>${sheet.cols.map(col=>renderCell(area,sheet.id,rowId,col,row,data[col[0]])).join('')}<td>${status}</td></tr>`;
-}
-
-function renderCell(area,sheet,rowId,col,rowLabel,value){
-  const [key,label,type,opts]=col; const id=`cell_${safeId(area)}_${safeId(sheet)}_${safeId(rowId)}_${safeId(key)}`;
-  if(type==='fixed') return `<td><input id="${id}" data-key="${key}" value="${esc(opts || rowLabel)}" readonly /></td>`;
-  if(type==='select') return `<td><select id="${id}" data-key="${key}">${String(opts).split('|').map(o=>`<option ${value===o?'selected':''}>${o}</option>`).join('')}</select></td>`;
-  return `<td><input id="${id}" data-key="${key}" type="${type}" value="${esc(value || '')}" placeholder="${esc(label)}" /></td>`;
-}
-
-function saveSheet(area,sheetId){
-  const t=templates[area]; const sheet=t.sheets.find(s=>s.id===sheetId); const f=filter(); let count=0;
-  sheet.rows.forEach((row,idx)=>{
-    const rowId=`r${idx}`; const data={}; let has=false;
-    sheet.cols.forEach(col=>{ const id=`cell_${safeId(area)}_${safeId(sheetId)}_${safeId(rowId)}_${safeId(col[0])}`; const el=$(id); const val=el ? el.value.trim() : ''; data[col[0]]=val; if(col[2] !== 'fixed' && val) has=true; });
-    const key=recKey(area,sheetId,rowId); records=records.filter(r=>r.key!==key);
-    if(has){ records.push({...f,key,area,sheet:sheetId,rowId,rowLabel:row,data,updatedAt:new Date().toISOString()}); count++; }
-  });
-  save(); renderArea(area); toast(`${sheet.name} ${count}건 저장되었습니다.`);
-}
-window.saveSheet=saveSheet;
-
-function renderMap(){
-  const rows = [
-    ['온실가스','기존 SEMS','Scope 1·2·3 배출량, 에너지 사용량, 배출계수','GRI 305, CDP, SBTi 기초자료'],
-    ['환경자료','용수·폐수','용수 사용량, 폐수 배출량, 재이용수','GRI 303'],
-    ['환경자료','폐기물','폐기물 발생량, 지정/일반, 처리방법, 재활용량','GRI 306'],
-    ['환경자료','대기오염물질','NOx, SOx, 먼지, VOC 등','환경 법규, 내부 환경성과'],
-    ['인사자료','임직원 현황','성별, 직군, 고용형태, 외국인, 장애인','GRI 2-7, 405'],
-    ['인사자료','채용·퇴사','신규채용, 퇴사, 성별·연령대별 구성','GRI 401'],
-    ['인사자료','교육훈련','교육인원, 총 교육시간, 교육 종류','GRI 404'],
-    ['안전보건','산업재해·개선','사고유형, 건수, 근로손실일수, 조치상태','GRI 403'],
-    ['공급망·윤리','협력사 평가·실사','평가대상, 평가완료, 고위험, 개선요청','GRI 308, 414, 공급망 실사'],
-    ['공급망·윤리','윤리·제보','윤리교육, 고충, 제보, 징계','GRI 205, 2-25, 2-26']
-  ];
-  $('content').innerHTML = `<div class="panel"><h2>보고서 데이터맵</h2><p>입력대장은 현업 작성 편의 기준으로 나누고, 보고서 작성 시에는 아래 항목으로 다시 집계합니다.</p><div class="tableWrap"><table><thead><tr><th>분야</th><th>입력대장</th><th>보고서 사용 데이터</th><th>연결 기준</th></tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
-}
-
-function renderSettings(){
-  $('content').innerHTML = `<div class="panel"><h2>운영형 전환 구조</h2><p>온실가스는 기존 SEMS 테이블과 배출계수 마스터를 사용하고, 그 외 지속가능경영보고서 데이터는 분야별 입력대장 테이블로 분리하는 구조가 적합합니다.</p><div class="tableWrap"><table><thead><tr><th>구분</th><th>권장 테이블</th><th>역할</th></tr></thead><tbody><tr><td>온실가스</td><td>기존 SEMS entries / emission factors</td><td>Scope 1·2·3 산정 및 배출계수 관리</td></tr><tr><td>환경·인사·안전·공급망</td><td>esg_reporting_entries</td><td>분야별 입력대장 데이터 저장</td></tr><tr><td>입력양식</td><td>esg_reporting_templates</td><td>분야별 행/열 구조 관리</td></tr><tr><td>증빙</td><td>esg_evidence_files</td><td>파일/URL/증빙 설명 연결</td></tr><tr><td>보고서 맵</td><td>esg_report_mapping</td><td>GRI, CDP, EcoVadis, 공급망 실사 문항 연결</td></tr></tbody></table></div></div>`;
-}
-
-function exportData(){ const blob = new Blob([JSON.stringify({exportedAt:new Date().toISOString(),records},null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sems_t_reporting_sheet_data.json'; a.click(); URL.revokeObjectURL(a.href); }
-async function importData(e){ const file=e.target.files[0]; if(!file)return; try{ const json=JSON.parse(await file.text()); records=Array.isArray(json.records)?json.records:json; save(); render(); toast('데이터를 불러왔습니다.'); }catch(err){ toast('JSON 파일을 확인해 주세요.'); } }
+function renderLibrary(){ $('content').innerHTML=`<div class="panel intro"><h2>Metric Library</h2><p>상용 ESG 플랫폼처럼 모든 지표를 카탈로그화하고, 담당부서·단위·증빙·보고기준을 연결합니다.</p></div><div class="tableWrap"><table><thead><tr><th>지표</th><th>분야</th><th>Topic</th><th>단위</th><th>담당</th><th>주기</th><th>기준</th><th>증빙</th></tr></thead><tbody>${metrics.map(m=>`<tr><td>${m.icon} <b>${m.name}</b></td><td>${m.domain}</td><td>${m.topic}</td><td>${m.unit}</td><td>${m.owner}</td><td>${m.cycle}</td><td>${m.standard}</td><td>${m.evidence}</td></tr>`).join('')}</tbody></table></div>`; }
+function renderEvidence(){ const rows=esgRecords.filter(baseMatch).filter(r=>r.evidence); $('content').innerHTML=`<div class="panel intro"><h2>Evidence Center</h2><p>각 데이터 제출값과 연결된 증빙 파일명 또는 URL을 한 곳에서 추적합니다.</p></div><div class="evidenceList">${rows.map(r=>{const m=metrics.find(x=>x.id===r.metricId);const [c,l]=statusLabel(r);return `<div class="evidenceCard"><div><b>${m?.icon||''} ${m?.name||r.metricId}</b><p>${r.evidence}</p><span class="pill ${c}">${l}</span></div><button class="btn secondary small" onclick="selectMetric('${r.metricId}')">보기</button></div>`}).join('')||'<div class="panel empty">등록된 증빙자료가 없습니다.</div>'}</div>`; }
+function renderReports(){ const cards=[['GRI 305 / CDP','온실가스 배출량','기존 SEMS식 활동자료와 배출계수 산정 결과 사용'],['GRI 303','용수 관리','용수 사용량, 폐수 배출량, 재이용수'],['GRI 306','폐기물 관리','폐기물 발생량, 재활용량, 처리방법'],['GRI 2-7 / 401 / 404 / 405','임직원 및 교육','임직원 현황, 채용/퇴사, 교육시간'],['GRI 403','안전보건','산업재해, 근로손실일수, 개선조치'],['GRI 308 / 414','공급망 ESG','협력사 평가, 실사, 개선요청']]; $('content').innerHTML=`<div class="panel intro"><h2>Report Mapping</h2><p>입력 요청은 현업 친화적으로 운영하되, 보고서 작성 시에는 기준별 항목으로 자동 재배치합니다.</p></div><div class="reportGrid">${cards.map(c=>`<div class="reportCard"><h3>${c[0]}</h3><b>${c[1]}</b><p>${c[2]}</p></div>`).join('')}</div>`; }
+function renderSettings(){ $('content').innerHTML=`<div class="panel"><h2>운영형 전환 구조</h2><p>화면은 상용 ESG 플랫폼의 데이터 수집 워크플로우를 따르고, DB는 기존 SEMS 온실가스 테이블과 신규 ESG 데이터 요청 테이블을 분리합니다.</p><div class="tableWrap"><table><thead><tr><th>구분</th><th>권장 테이블</th><th>역할</th></tr></thead><tbody><tr><td>온실가스 활동자료</td><td>sems_entries</td><td>기존 SEMS식 활동자료 저장</td></tr><tr><td>배출계수</td><td>sems_emission_factors</td><td>기존 SEMS 배출계수 연결</td></tr><tr><td>데이터 요청</td><td>esg_data_requests</td><td>지표별 담당자, 마감일, 상태 관리</td></tr><tr><td>ESG 제출값</td><td>esg_metric_values</td><td>비온실가스 ESG KPI 입력값</td></tr><tr><td>증빙</td><td>esg_evidence_files</td><td>파일/URL, 제출값 연결</td></tr><tr><td>보고서 매핑</td><td>esg_report_mapping</td><td>GRI, CDP, EcoVadis, 공급망 실사 연결</td></tr></tbody></table></div></div>`; }
+function exportData(){ const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),esgRecords,ghgRecords},null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sems_t_esg_collection_data.json'; a.click(); URL.revokeObjectURL(a.href); }
+async function importData(e){ const file=e.target.files[0]; if(!file) return; try{ const json=JSON.parse(await file.text()); esgRecords=Array.isArray(json.esgRecords)?json.esgRecords:[]; ghgRecords=Array.isArray(json.ghgRecords)?json.ghgRecords:[]; saveEsg(); saveGhg(); render(); toast('데이터를 불러왔습니다.'); }catch(err){ toast('JSON 파일을 확인해 주세요.'); } }
 
 init();
