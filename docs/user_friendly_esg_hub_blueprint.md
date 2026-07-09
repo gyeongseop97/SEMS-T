@@ -4,17 +4,20 @@
 
 SEMS-T should become a practical ESG data hub for sustainability reporting, supply-chain due diligence, CDP, EcoVadis, and internal management reporting.
 
-The service should not start from the reporting framework. It should start from the employee who has to enter data.
+The system should not use one generic input screen for all ESG data. ESG data differs by field. Therefore, the input space must be separated by business area, and each area must have its own field structure.
 
 Core principle:
 
-> Show users what they need to do, make the input process simple, and let the system handle units, evidence, report mapping, and status tracking.
+> Separate the input space by ESG area, then customize the input fields according to the calculation and evidence logic of each area.
 
 ## 2. Target users
 
 | User | Main need | Recommended UX |
 |---|---|---|
-| Field department user | Enter assigned data quickly | Today’s tasks, quick input, evidence upload |
+| Environmental user | Enter GHG, water, waste, air data | Area-specific forms and evidence guide |
+| HR user | Enter workforce and training data | Aggregated headcount, hiring, turnover, training forms |
+| Safety user | Enter accidents and risk improvements | Incident and corrective action forms |
+| Purchasing/quality user | Enter supplier evaluation and due diligence data | Supplier assessment forms |
 | Planning/ESG manager | Check progress and missing data | Dashboard, company/site filters, completion rate |
 | Reviewer | Validate values and evidence | Review status, comments, revision request |
 | Report writer | Use data in sustainability report | Report data map, export by disclosure item |
@@ -26,80 +29,89 @@ Core principle:
 
 The first screen should answer these questions.
 
-- What do I need to submit this month?
-- Which items are missing?
+- What area is incomplete?
+- Which input groups are missing?
 - Which items already have evidence?
 - What is the overall report readiness?
 
-### Step 2. User clicks one task
+### Step 2. User enters the relevant area
 
-The task should open the quick input screen with the relevant indicator already selected.
+The user should not be forced into a single universal input form.
 
-The user should not have to know whether the data belongs to GRI 303, GRI 305, CDP, or internal report sections.
+Recommended area split:
 
-### Step 3. User enters value and evidence
+- Greenhouse Gas
+- General Environment
+- People and Training
+- Occupational Health and Safety
+- Supply Chain and Ethics
+- Report Data Map
 
-The input screen should only ask for essential information.
+### Step 3. Each area uses its own input structure
 
-- Value
-- Evidence file or URL
-- Note, if needed
+Examples:
 
-The system should automatically show:
-
-- Unit
-- Owner department
-- Evidence example
-- Reporting item
-- External standard mapping
-
-### Step 4. Manager checks status
-
-The manager should be able to filter by:
-
-- Year/month
-- Company
-- Site
-- ESG area
-- Missing items
-- Items without evidence
-- Items pending review
-
-### Step 5. Report writer exports data
-
-Data should be exportable by report item, not only by raw indicator.
-
-Example:
-
-| Report section | Connected indicators |
+| Area | Required input logic |
 |---|---|
-| Greenhouse gas emissions | Scope 1, Scope 2, energy use |
-| Water management | Water withdrawal, wastewater discharge |
-| Waste management | Waste generation, recycling amount |
-| Employee status | Total employees, gender, employment type |
-| Training | Total training hours, average training hours |
-| Occupational safety | Accident count, lost work days |
+| Greenhouse Gas | Scope, emission source, activity data, activity unit, emission factor, factor source, calculated emissions, evidence |
+| Water/Wastewater | water source, withdrawal, discharge, reused water, evidence |
+| Waste | waste type, hazardous/non-hazardous, treatment method, vendor, amount, evidence |
+| Air pollutants | stack/facility, pollutant, concentration or amount, measurement date, test report |
+| Workforce | base date, category, gender, employment type, headcount |
+| Hiring/Turnover | type, gender, age group, count |
+| Training | training name, target group, number of trainees, total training hours, evidence |
+| Safety | incident date, accident type, count, lost work days, corrective action |
+| Supply chain | supplier count, evaluated suppliers, high-risk suppliers, improvement request |
 
-## 4. Recommended data structure
+## 4. Greenhouse gas input structure
 
-### 4.1 Indicator master
+Greenhouse gas must be handled separately from general ESG data.
+
+### Scope 1
+
+| Group | Examples | Key fields |
+|---|---|---|
+| Stationary combustion | LNG, LPG, diesel, gasoline, kerosene | activity amount, unit, emission factor, factor source |
+| Mobile combustion | company vehicles, forklifts | fuel amount, vehicle/fuel type, factor |
+| Fugitive emissions | refrigerants such as R-134a, R-410A | recharge/leak amount, GWP factor |
+
+### Scope 2
+
+| Group | Examples | Key fields |
+|---|---|---|
+| Electricity - location-based | utility electricity | MWh, grid factor |
+| Electricity - market-based | REC, PPA, green premium | MWh, contract/evidence, market-based factor |
+| Steam/heat | purchased steam or heat | amount, unit, factor |
+
+### Scope 3
+
+| Category | Examples | Key fields |
+|---|---|---|
+| Cat.1 Purchased goods and services | steel, aluminum, parts, outsourced processing | purchase amount or quantity, factor source |
+| Cat.2 Capital goods | equipment, molds, buildings | purchase amount, factor |
+| Cat.3 Fuel and energy-related activities | upstream fuel and electricity emissions | energy amount, upstream factor |
+| Cat.4 Upstream transport | inbound logistics | ton-km or logistics cost, transport mode |
+| Cat.5 Waste generated in operations | waste treatment | waste type, treatment method, factor |
+| Cat.6 Business travel | air, rail, car | distance or cost, travel mode |
+| Cat.7 Employee commuting | car, bus, subway | people, distance, work days |
+| Cat.9 Downstream transport | product delivery | ton-km, transport mode |
+
+## 5. Recommended data structure
+
+### 5.1 ESG input group master
 
 | Field | Description |
 |---|---|
-| code | Unique indicator code |
-| domain | Environment, Social, Safety, Supply Chain, Governance |
-| group_name | Detailed group such as water, waste, education |
-| indicator_name | User-facing indicator name |
-| unit | tCO₂eq, MWh, ton, kg, persons, hours, count |
-| cycle | Monthly, quarterly, yearly, on change |
+| area | GHG, environment, people, safety, supply, governance |
+| group_code | Input group code |
+| group_name | User-facing group name |
 | owner_department | Responsible department |
+| input_cycle | Monthly, quarterly, yearly, on change |
+| evidence_guide | Recommended evidence |
 | report_item | Sustainability report section |
 | external_standard | GRI, CDP, EcoVadis, supply-chain due diligence item |
-| evidence_example | Recommended evidence type |
-| input_guide | Plain-language guide for field users |
-| is_active | Whether the indicator is currently used |
 
-### 4.2 ESG data entries
+### 5.2 GHG activity entries
 
 | Field | Description |
 |---|---|
@@ -107,52 +119,56 @@ Example:
 | month | Reporting month |
 | company | Company name |
 | site | Site name |
-| indicator_code | Linked indicator code |
-| value | Numeric value |
-| unit | Unit copied from indicator master |
-| evidence_id | Linked evidence file or URL |
-| note | Data explanation or reason for change |
+| scope | Scope 1, Scope 2, Scope 3 |
+| category | Emission source or Scope 3 category |
+| activity_amount | Activity data amount |
+| activity_unit | Unit of activity data |
+| emission_factor | Emission factor |
+| factor_unit | Unit of emission factor |
+| factor_source | Source of emission factor |
+| calculated_emissions | Calculated emissions |
+| evidence_id | Evidence link |
+| note | Calculation note |
+
+### 5.3 ESG area entries
+
+| Field | Description |
+|---|---|
+| year | Reporting year |
+| month | Reporting month |
+| company | Company name |
+| site | Site name |
+| area | Environment, people, safety, supply, governance |
+| group_code | Area-specific group |
+| field_values | JSON field values for each area form |
+| evidence_id | Evidence file or URL |
 | status | Draft, submitted, reviewed, rejected |
 | created_by | Input user |
 | reviewed_by | Reviewer |
 | updated_at | Last update time |
 
-### 4.3 Evidence table
+## 6. Current prototype scope
 
-| Field | Description |
-|---|---|
-| evidence_id | Unique evidence ID |
-| file_name | Uploaded file name |
-| file_url | Storage URL |
-| evidence_type | File, URL, system capture |
-| related_indicator | Linked indicator code |
-| year_month | Related period |
-| uploaded_by | Uploader |
-| note | Evidence description |
+The current prototype includes:
 
-## 5. Current prototype scope
-
-The current `index.html` prototype includes:
-
-- Dashboard
-- Today’s tasks
-- Quick input screen
-- Environment data cards
-- People data cards
-- Safety data cards
-- Supply chain and governance data cards
+- Area-based dashboard
+- Greenhouse gas input by Scope 1, Scope 2, Scope 3
+- Activity data and emission factor fields for GHG
+- General environment forms for water, waste, and air pollutants
+- People forms for headcount, hiring/turnover, and training
+- Safety forms for incidents and risk improvements
+- Supply chain and ethics forms
 - Report data map
-- Evidence list
-- Indicator master table
 - JSON export/import
 - Browser localStorage storage
 
-## 6. Next development sequence
+## 7. Next development sequence
 
-1. Convert the static indicator list into a Supabase `esg_indicator_master` table.
-2. Add `esg_data_entries` table for monthly/quarterly/yearly values.
-3. Add `esg_evidence_files` table and connect file storage.
-4. Add role-based access by company, site, department, and admin role.
-5. Add review workflow: draft, submitted, reviewed, rejected.
-6. Add Excel export for sustainability report tables.
-7. Add report item mapping by GRI, CDP, EcoVadis, and supply-chain due diligence.
+1. Convert GHG master data into Supabase tables.
+2. Create `ghg_activity_entries` for Scope 1, Scope 2, Scope 3 calculation records.
+3. Create `esg_area_entries` for non-GHG ESG data.
+4. Add evidence file storage and link evidence to each record.
+5. Add role-based access by company, site, area, department, and admin role.
+6. Add review workflow: draft, submitted, reviewed, rejected.
+7. Add Excel export by sustainability report item.
+8. Add report mapping by GRI, CDP, EcoVadis, and supply-chain due diligence.
